@@ -1,6 +1,7 @@
 # Test Plan for nxp_simtemp
 
 ## Overview
+
 This document describes the testing strategy for the nxp_simtemp Linux kernel module.
 It ensures correct operation of:
 * Periodic temperature sampling
@@ -21,127 +22,25 @@ It ensures correct operation of:
 * Optional: QEMU / i.MX for DT testing
 
 # Test Scenarios
+## Tests
 
-## T1 – Load/Unload Module
+| Test | Input / Setup | Action | Expected Output | Sysfs / Commands |
+|------|---------------|--------|-----------------|-----------------|
+| **T1 – Build & Load/Unload** | Module and CLI sources | Compile module: `make -C kernel clean && make -C kernel`; compile CLI: `g++ -O2 -Wall -std=c++17 -o user/cli/main user/cli/main.cpp`; load/unload module | Module loads/unloads without errors; `/dev/nxp_simtemp` and sysfs files exist | `sudo insmod kernel/nxp_simtemp.ko`; check `/dev/nxp_simtemp`; `ls /sys/class/misc/nxp_simtemp` |
+| **T2 – Periodic Sampling** | `sampling_ms = 100` | Read 10 samples via CLI | Samples returned ~100ms apart; `stats.samples_generated` increments | `echo 100 | sudo tee /sys/class/misc/nxp_simtemp/sampling`; `user/cli/main --count 10`; `cat /sys/class/misc/nxp_simtemp/stats` |
+| **T3 – Threshold Event / Poll** | Threshold below expected mean (e.g., 34500 mC) | CLI reads samples in background | CLI unblocks when threshold crossed; `alert_event` set | `echo 34500 | sudo tee /sys/class/misc/nxp_simtemp/threshold`; `user/cli/main --count 5 &` |
+| **T4 – Error Paths** | Invalid threshold; very fast sampling | Write invalid threshold; write `1ms` sampling; read stats | Invalid writes return `-EINVAL` and increment `stats.invalid_writes`; module remains responsive | `echo invalid | sudo tee /sys/class/misc/nxp_simtemp/threshold`; `echo 1 | sudo tee /sys/class/misc/nxp_simtemp/sampling`; `cat /sys/class/misc/nxp_simtemp/stats` |
+| **T5 – Concurrency** | CLI reading periodic samples | Change threshold during CLI read | CLI continues without blocking; threshold updates correctly; no corruption | `user/cli/main --count 10 &`; `echo 30000 | sudo tee /sys/class/misc/nxp_simtemp/threshold` |
+| **T6 – API Contract / Struct Validation** | Binary struct read | Read multiple samples via CLI | `sample_record` fields correct: `timestamp_jiffies`, `temp_mC`, `alert`, padding; correct endianness | `user/cli/main --count 5` |
+| **T7 – Mode Attribute** | Modes: normal, noisy, ramp | Set mode via sysfs; read 5 samples per mode | `sim_mode` updated correctly; temperature generation matches mode behavior | `echo normal|noisy|ramp | sudo tee /sys/class/misc/nxp_simtemp/mode`; `user/cli/main --count 5` |
+| **Quick Check / Smoke Test** | Module loaded | Read 3 samples quickly | Samples returned; no kernel errors | `user/cli/main --count 3` |
 
-Objective: Verify module loads, creates /dev/nxp_simtemp and sysfs files, and unloads cleanly.
+---
 
-Steps:
+### Notes
+- Mutexes (`sample_lock`, `stats_lock`, `mode_lock`) and wait queue (`sample_wq`) ensure data integrity.
+- `read()` blocks until `sample_ready = true`.
+- `alert_event` triggers only when temperature crosses threshold.
+- Sysfs provides configuration (`threshold`, `sampling`, `mode`) and monitoring (`stats`).
 
-1. Ensure module is not loaded: lsmod | grep nxp_simtemp
-2. sudo insmod nxp_simtemp.ko
-3. Check /dev/nxp_simtemp exists
-4. Check sysfs attributes exist
-5. sudo rmmod nxp_simtemp
-6. Verify cleanup: device removed, no dangling timers
 
-Expected Result: Module loads/unloads without errors, device and sysfs exist during load.
-
-## T2 – Sysfs Configuration
-
-Objective: Set threshold and sampling via sysfs.
-
-Steps:
-
-1. Load module
-2. echo 45000 | sudo tee /sys/class/misc/nxp_simtemp/threshold
-3. echo 100 | sudo tee /sys/class/misc/nxp_simtemp/sampling
-4. Read back values to verify
-5. Execute CLI to read 10 samples: ./main --count 10
-
-Expected Result: Threshold and sampling are correctly applied. CLI reads samples without errors.
-
-## T3 – Threshold Write via CLI
-
-Objective: Verify CLI can modify threshold.
-
-Steps:
-
-1. Load module
-2. ./main set 35000
-3. Read samples with CLI to check alert behavior
-4. Verify threshold via sysfs
-
-Expected Result: Threshold changes correctly and affects alert generation.
-
-## T4 – Error Paths
-
-Objective: Ensure module handles invalid sysfs input gracefully.
-
-Steps:
-
-1. Load module
-2. Attempt: echo "invalid" | sudo tee /sys/class/misc/nxp_simtemp/threshold
-3. Observe kernel logs / CLI behavior
-Expected Result: Module rejects invalid input (-EINVAL), no crash occurs.
-
-## T5 – Concurrency Demo
-
-Objective: Test safe access while module is being read and threshold updated.
-
-Steps:
-
-1. Load module
-2. Start CLI reading samples in background
-3. While CLI is running, change threshold via sysfs
-4. Wait for CLI to complete
-
-Expected Result: No race conditions, CLI reads correct samples, threshold change applies safely.
-
-## T6 – API Contract / Partial Reads
-
-Objective: Verify read() and struct handling.
-
-Steps:
-
-1. Load module
-2. Use CLI to perform multiple reads
-3. Check returned format and endianness
-4. Validate partial/short reads are handled correctly
-
-Expected Result: Read data conforms to expected format; module handles partial reads.
-
-## T7 – Poll Notification (Optional)
-
-Objective: Verify non-blocking poll() interface.
-
-Steps:
-
-1. Load module
-2. Use CLI/GUI or select() in a test script to poll /dev/nxp_simtemp
-3. Wait for new sample
-4. Verify poll returns when sample ready
-
-Expected Result: Poll returns immediately when sample is ready; blocking behavior works correctly.
-
-## T8 – GUI Integration (Optional)
-
-Objective: Test simtemp_gui.py functionality.
-
-Steps:
-
-1. Load module
-2. Start GUI: python3 simtemp_gui.py
-3. Verify display of current temperature and alert
-4. Modify threshold via GUI
-5. Observe correct behavior on temperature samples
-
-Expected Result: GUI shows updated values and interacts with sysfs and misc device correctly.
-
-## T9 – Device Tree / Platform Device (Optional)
-
-Objective: Verify DT-based platform device integration.
-
-Steps:
-
-1. Build module with platform device support
-2. Check kernel logs for platform device created for DT test
-3. Ensure module works independently of DT node
-
-Expected Result: Platform device registers without impacting core functionality.
-
-## Notes
-
-* All tests must pass without kernel panics or warnings.
-* Use dmesg to monitor kernel logs during testing.
-* Optional tests (GUI, DT, poll) provide full integration coverage.

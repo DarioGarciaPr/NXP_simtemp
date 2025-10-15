@@ -48,6 +48,32 @@ static DECLARE_WAIT_QUEUE_HEAD(sample_wq);
 static bool sample_ready = false;
 static DEFINE_MUTEX(sample_lock);
 
+/* --- Mode variable --- */
+static char sim_mode[16] = "normal";  // default mode
+static DEFINE_MUTEX(mode_lock);
+
+/* Ramp generator state */
+static int ramp_step = 0;
+
+/* --- Temperature generators --- */
+static int generate_normal_temp(void)
+{
+    return 40000 + (get_random_u32() % 10000); // 25°C ±5°C
+}
+
+static int generate_noisy_temp(void)
+{
+    return 40000 + (get_random_u32() % 20000); // 25°C ±20°C
+}
+
+static int generate_ramp_temp(void)
+{
+    ramp_step += 1000;          // +1°C per sample
+    if (ramp_step > 100000)     // reset at 100°C
+        ramp_step = 25000;
+    return ramp_step;
+}
+
 /* --- sysfs interfaces --- */
 static ssize_t threshold_show(struct device *dev,
                               struct device_attribute *attr, char *buf)
@@ -75,6 +101,34 @@ static ssize_t threshold_store(struct device *dev,
     }
     return -EINVAL;
 }
+
+static ssize_t mode_show(struct device *dev,
+                         struct device_attribute *attr, char *buf)
+{
+    ssize_t ret;
+    mutex_lock(&mode_lock);
+    ret = scnprintf(buf, 16, "%s\n", sim_mode);
+    mutex_unlock(&mode_lock);
+    return ret;
+}
+
+static ssize_t mode_store(struct device *dev,
+                          struct device_attribute *attr,
+                          const char *buf, size_t count)
+{
+    mutex_lock(&mode_lock);
+    if (strncmp(buf, "normal", 6) == 0)
+        strcpy(sim_mode, "normal");
+    else if (strncmp(buf, "noisy", 5) == 0)
+        strcpy(sim_mode, "noisy");
+    else if (strncmp(buf, "ramp", 4) == 0)
+        strcpy(sim_mode, "ramp");
+    mutex_unlock(&mode_lock);
+    return count;
+}
+
+static DEVICE_ATTR_RW(mode);
+
 
 static ssize_t nxp_simtemp_write(struct file *file, const char __user *buf,
                                  size_t count, loff_t *ppos)
@@ -157,8 +211,16 @@ static DEVICE_ATTR_RO(stats);
 static void timer_callback(struct timer_list *t)
 {
     mutex_lock(&sample_lock);
-    latest_sample.temp_mC = 20000 + (get_random_u32() % 40000); // 20-60 C
-    bool new_alert = (latest_sample.temp_mC > threshold);
+    //mutex_lock(&mode_lock);
+    if (strcmp(sim_mode, "normal") == 0)
+      latest_sample.temp_mC = generate_normal_temp(); // 20-60°C
+    else if (strcmp(sim_mode, "noisy") == 0)
+      latest_sample.temp_mC = generate_noisy_temp(); // 20-100°C
+    else if (strcmp(sim_mode, "ramp") == 0) {
+    latest_sample.temp_mC = generate_ramp_temp();
+    }
+    //mutex_unlock(&mode_lock);
+    bool new_alert = (latest_sample.temp_mC < threshold);
     latest_sample.alert = new_alert;
     sample_ready = true;
     if (new_alert)
@@ -244,41 +306,56 @@ static int nxp_simtemp_init_core(void)
     int ret;
 
     ret = misc_register(&nxp_simtemp_dev);
-    if (ret)
+    if (ret) {
+        pr_err("nxp_simtemp: misc_register failed\n");
         return ret;
+    }
 
+    // Crear sysfs files en orden
     ret = device_create_file(nxp_simtemp_dev.this_device, &dev_attr_threshold);
-    if (ret)
+    if (ret) {
+        pr_err("nxp_simtemp: failed to create sysfs file: threshold\n");
         goto err_remove;
+    }
 
     ret = device_create_file(nxp_simtemp_dev.this_device, &dev_attr_sampling);
-    if (ret)
+    if (ret) {
+        pr_err("nxp_simtemp: failed to create sysfs file: sampling\n");
         goto err_remove_threshold;
-        
-    ret = device_create_file(nxp_simtemp_dev.this_device, &dev_attr_stats);
-    if (ret)
-        goto err_remove_sampling;
+    }
 
-    // --- timer setup ---
+    ret = device_create_file(nxp_simtemp_dev.this_device, &dev_attr_stats);
+    if (ret) {
+        pr_err("nxp_simtemp: failed to create sysfs file: stats\n");
+        goto err_remove_sampling;
+    }
+
+    ret = device_create_file(nxp_simtemp_dev.this_device, &dev_attr_mode);
+    if (ret) {
+        pr_err("nxp_simtemp: failed to create sysfs file: mode\n");
+        goto err_remove_stats;
+    }
+
+    // Configurar timer
     timer_setup(&sample_timer, timer_callback, 0);
     mod_timer(&sample_timer, jiffies + msecs_to_jiffies(sampling_ms));
     pr_info("nxp_simtemp: timer armado con sampling %d ms\n", sampling_ms);
 
-    // --- inicializar primera muestra para evitar bloqueo en read() ---
+    // Inicializar primera muestra
     mutex_lock(&sample_lock);
-    latest_sample.temp_mC = 20000;  // valor inicial arbitrario
-    latest_sample.alert = 0;
-    sample_ready = true;             // permite primera lectura inmediata
-    alert_event = false;             // inicializa flag de threshold
+    latest_sample.temp_mC = 20000; // valor inicial arbitrario
+    latest_sample.alert = (latest_sample.temp_mC < threshold);
+    sample_ready = true;
+    alert_event = false;
     mutex_unlock(&sample_lock);
 
     pr_info("nxp_simtemp loaded\n");
     return 0;
-    
+
+err_remove_stats:
+    device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_stats);
 err_remove_sampling:
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_sampling);
-    goto err_remove_threshold;
-
 err_remove_threshold:
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_threshold);
 err_remove:
@@ -286,13 +363,13 @@ err_remove:
     return ret;
 }
 
-
 static void nxp_simtemp_cleanup(void)
 {
     del_timer_sync(&sample_timer);
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_threshold);
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_sampling);
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_stats);
+    device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_mode);
     misc_deregister(&nxp_simtemp_dev);
 
     pr_info("nxp_simtemp: module unloaded and sysfs cleaned\n");

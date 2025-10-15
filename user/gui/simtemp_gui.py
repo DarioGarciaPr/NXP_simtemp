@@ -13,13 +13,14 @@ class SimTempGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("NXP SimTemp Monitor")
-        self.root.geometry("550x550")
+        self.root.geometry("550x600")
         self.root.configure(bg="#f3f4f6")
 
         # GUI variables
         self.temperature_var = tk.StringVar(value="-- °C")
         self.status_var = tk.StringVar(value="Disconnected")
         self.threshold_var = tk.StringVar(value="Low threshold: 20°C")
+        self.sampling_var = tk.StringVar(value="Sampling interval: -- ms")
         self.source_var = tk.StringVar(value="Source: Simulation")
         self.threshold_origin_var = tk.StringVar(value="Threshold origin: Default")
         self.low_threshold = 20.0  # Initial low threshold
@@ -58,6 +59,10 @@ class SimTempGUI:
         self.alert_label = ttk.Label(root, textvariable=self.alert_var, font=("Helvetica", 12, "bold"))
         self.alert_label.pack(pady=5)
 
+        # Sampling display
+        self.sampling_label = ttk.Label(root, textvariable=self.sampling_var, font=("Helvetica", 12, "italic"))
+        self.sampling_label.pack(pady=5)
+
         # Source display
         ttk.Label(root, textvariable=self.source_var, font=("Helvetica", 10, "italic")).pack(pady=5)
 
@@ -79,12 +84,14 @@ class SimTempGUI:
         if os.path.exists(DEVICE_PATH):
             try:
                 fd = os.open(DEVICE_PATH, os.O_RDONLY | os.O_NONBLOCK)
-                data = os.read(fd, 1024).decode().strip()
+                data = os.read(fd, 12)  # read binary record: 12 bytes
                 os.close(fd)
-                if data:
-                    for part in data.split():
-                        if part.startswith("temp="):
-                            return float(part.split("=")[1][:-1])
+                if len(data) == 12:
+                    # Unpack struct sample_record: u32 timestamp, int temp_mC, u8 alert, 3 padding
+                    import struct
+                    ts, temp_mC, alert, _pad1, _pad2, _pad3 = struct.unpack("I i B B B B", data)
+                    temp_C = temp_mC / 1000.0
+                    return temp_C
                 return None
             except Exception:
                 return None
@@ -106,14 +113,30 @@ class SimTempGUI:
                 self.temp_label.configure(foreground="blue")
                 self.alert_count += 1
                 self.alert_var.set(f"Low threshold alerts: {self.alert_count}")
-                self.alert_label.configure(foreground="red")  # highlight alert
+                self.alert_label.configure(foreground="red")
             else:
                 self.status_var.set("Temperature normal")
                 self.temp_label.configure(foreground="green")
                 self.alert_label.configure(foreground="black")
 
+        # Update sampling display
+        self.update_sampling()
+
         # Repeat every second
         self.root.after(1000, self.update_temperature)
+
+    # Update sampling display
+    def update_sampling(self):
+        SAMPLING_SYSFS = f"/sys/class/misc/nxp_simtemp/sampling"
+        if os.path.exists(SAMPLING_SYSFS):
+            try:
+                with open(SAMPLING_SYSFS, "r") as f:
+                    val = int(f.read().strip())
+                    self.sampling_var.set(f"Sampling interval: {val} ms")
+            except Exception:
+                self.sampling_var.set("Error reading sampling")
+        else:
+            self.sampling_var.set("Sampling not available")
 
     # Update low threshold in GUI
     def update_low_threshold(self):

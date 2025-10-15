@@ -3,6 +3,56 @@
 ## Overview
 `nxp_simtemp` is a Linux kernel module that simulates a temperature sensor. It provides a misc device `/dev/nxp_simtemp` for user-space interaction and sysfs attributes for configuration and monitoring.
 
+## Architecture
+```mermaid
+flowchart TD
+    subgraph Kernel_Space["🧩 **Kernel Space**"]
+        F["📄 **Device Tree (DTS)**<br>nxp_simtemp.dts<br><i>(Not functional yet)</i>"] 
+            -->|intended hardware mapping| A["🔧 **SysFS Interfaces**<br>/sys/class/misc/nxp_simtemp/<br>threshold<br>sampling_ms<br>mode<br>stats"]
+
+        A -->|sampling_ms controls timer| B["⏱ **Timer Callback**<br>nxp_simtemp_timer<br>(mod_timer, ms)"]
+        B -->|generates sample| C["🗃 **latest_sample**<br>temp_mC / alert flag"]
+        C -->|"wake_up_interruptible(sample_wq)"| D["🛎 **Wait Queue (sample_wq)**<br>Notifies readers / poll"]
+
+        subgraph Extra_Features["📊 **Internal State**"]
+            M["⚙️ **mode (SysFS)**<br>normal / noisy / ramp<br>→ Selects temp generator"]
+            S["📈 **stats (SysFS)**<br>samples, invalid_writes, alerts"]
+        end
+
+        B --> M
+        B --> S
+    end
+
+    subgraph User_Space["💻 **User Space**"]
+        D --> E1["🧰 **CLI App**<br>./nxp_simtemp_cli<br>- Displays temp & alert<br>- Updates threshold & mode<br>- Tests poll events"]
+        D --> E2["🖥 **GUI App**<br>python3 gui/app.py<br>- Real-time plot<br>- Alert counter<br>- Mode & threshold control"]
+    end
+
+    classDef dts fill:#f8bbd0,stroke:#ad1457,stroke-width:2px;
+    classDef sysfs fill:#e0f7fa,stroke:#00796b,stroke-width:2px;
+    classDef timer fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef sample fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px;
+    classDef queue fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px;
+    classDef mode fill:#d1c4e9,stroke:#512da8,stroke-width:2px;
+    classDef stats fill:#c5cae9,stroke:#283593,stroke-width:2px;
+    classDef app fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
+    classDef kernelSpace fill:#eceff1,stroke:#37474f,stroke-width:1px,stroke-dasharray:3;
+    classDef userSpace fill:#f5f5f5,stroke:#616161,stroke-width:1px,stroke-dasharray:3;
+
+    class F dts;
+    class A sysfs;
+    class B timer;
+    class C sample;
+    class D queue;
+    class M mode;
+    class S stats;
+    class E1,E2 app;
+    class Kernel_Space kernelSpace;
+    class User_Space userSpace;
+
+```
+
+
 ## Features
 - Periodic temperature sampling via a kernel timer (`sample_timer`).
 - Modes of operation: `normal`, `noisy`, `ramp`.

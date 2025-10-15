@@ -1,0 +1,13 @@
+/dts-v1/;
+
+/ {
+    compatible = "generic,virtual-board";
+
+    simtemp0: simtemp@0 {
+        compatible = "nxp,simtemp";
+        sampling-ms = <1000>;    /* Intervalo inicial de muestreo en ms */
+        threshold-mC = <45000>;  /* Umbral inicial en mili-Celsius */
+        status = "okay";
+    };
+};
+

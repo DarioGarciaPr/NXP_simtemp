@@ -130,6 +130,64 @@ struct nxp_simtemp_stats {
 - Probe registers misc device and initializes sysfs attributes.
 - Defaults are used if DT node is missing: misc device still registers with default sampling and threshold.
 
+The Device Tree (DTS) entry for nxp_simtemp is currently defined but not functional.
+This decision is intentional due to the target environment being Ubuntu x86, where hardware enumeration relies on ACPI instead of the Device Tree mechanism used on ARM-based SoCs.
+
+Because nxp_simtemp is a fully virtual simulation driver with no actual hardware node, instantiating it through DTS would require additional layers such as platform bus emulation or a QEMU target with OF support, adding unnecessary complexity for a userspace test module.
+
+For now, the module is instantiated dynamically via misc_register(), which provides a lightweight and portable interface to expose SysFS attributes (sampling_ms, threshold, mode, stats) and the character device node without platform dependencies.
+
+Once migrated to an embedded ARM environment, the DTS integration will be activated by adding an of_match_table, implementing the probe()/remove() callbacks, and binding the device through the platform bus.
+
+The Device Tree (DTS) entry for nxp_simtemp is currently defined but not functional. The following code in nxp_simtemp.c shows the parts intended for DTS/Platform Device support:
+
+```c
+/* --- Platform device for DT testing --- */
+static struct platform_device *nxp_simtemp_pdev;
+
+static int nxp_simtemp_platform_init(void)
+{
+    nxp_simtemp_pdev = platform_device_register_simple("nxp_simtemp", -1, NULL, 0);
+    if (IS_ERR(nxp_simtemp_pdev))
+        return PTR_ERR(nxp_simtemp_pdev);
+    pr_info("nxp_simtemp: platform device created for DT test\n");
+    return 0;
+}
+
+static void nxp_simtemp_platform_exit(void)
+{
+    if (nxp_simtemp_pdev)
+        platform_device_unregister(nxp_simtemp_pdev);
+}
+
+/* --- wrapper init/exit for module --- */
+static int __init nxp_simtemp_init_wrapper(void)
+{
+    int ret;
+
+    ret = nxp_simtemp_init_core();
+    if (ret)
+        return ret;
+
+    ret = nxp_simtemp_platform_init();
+    if (ret) {
+        nxp_simtemp_cleanup();
+        return ret;
+    }
+
+    return 0;
+}
+
+static void __exit nxp_simtemp_exit_wrapper(void)
+{
+    nxp_simtemp_platform_exit();
+    nxp_simtemp_cleanup();
+}
+
+module_init(nxp_simtemp_init_wrapper);
+module_exit(nxp_simtemp_exit_wrapper);
+```
+
 ## Scaling Considerations
 - **10 kHz sampling (~0.1 ms per sample)**: current implementation may break due to timer and mutex overhead.
 - Wakeups, `copy_to_user`, and mutexes will dominate CPU.

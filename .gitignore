@@ -1,0 +1,24 @@
+# Kernel build
+*.cmd
+*.ko
+*.mod.*
+*.o
+*.symvers
+*.order
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor
+.vscode/
+
+# Ignorar módulo compilado del kernel
+kernel/nxp_simtemp.mod
+
+# Ignorar archivo main específico de CLI
+user/cli/main
+
+# Ignorar entorno virtual de GUI
+user/gui/venv/

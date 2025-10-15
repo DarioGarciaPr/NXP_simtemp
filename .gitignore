@@ -13,3 +13,12 @@ __pycache__/
 
 # Editor
 .vscode/
+
+# Ignorar módulo compilado del kernel
+kernel/nxp_simtemp.mod
+
+# Ignorar archivo main específico de CLI
+user/cli/main
+
+# Ignorar entorno virtual de GUI
+user/gui/venv/

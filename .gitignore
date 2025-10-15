@@ -1,0 +1,15 @@
+# Kernel build
+*.cmd
+*.ko
+*.mod.*
+*.o
+*.symvers
+*.order
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor
+.vscode/

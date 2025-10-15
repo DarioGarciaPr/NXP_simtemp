@@ -11,7 +11,7 @@ SAMPLES=10
 echo "=== Demo automática nxp_simtemp ==="
 
 # --- Compilar módulo ---
-echo "[T1] Compilando módulo..."
+echo "[T1] ========================= Compilando módulo ================================="
 make -C "$MODULE_DIR" clean
 make -C "$MODULE_DIR"
 echo "[T1 PASS] Módulo compilado."
@@ -37,7 +37,7 @@ sudo rmmod nxp_simtemp
 echo "[T1 PASS] Módulo descargado correctamente."
 
 # --- T2: Configuración sysfs ---
-echo "[T2] Configurando muestreo y threshold..."
+echo "[T2] ================= Configurando muestreo y threshold ========================="
 sudo insmod "$MODULE_DIR/$MODULE_NAME"
 THRESHOLD=45000
 SAMPLING=100
@@ -53,23 +53,33 @@ sudo rmmod nxp_simtemp
 echo "[T2 PASS] Módulo descargado después de la demo."
 
 # --- T3–T6: Demostraciones interactivas ---
-echo "[T3] Threshold test..."
+echo "[T3] ========================== Threshold test ======================================"
 sudo insmod "$MODULE_DIR/$MODULE_NAME"
 "$CLI_DIR/main" set 35000
 "$CLI_DIR/main" --count $SAMPLES
 sudo rmmod nxp_simtemp
 echo "[T3 PASS] Threshold test completado."
 
-echo "[T4] Error paths demo (intencional)..."
+echo "[T4] =========================== Error paths demo (intencional) ======================"
 # Ejemplo: escribir valor inválido
 sudo insmod "$MODULE_DIR/$MODULE_NAME"
 set +e
+# Invalid threshold write → should return -EINVAL and increment stats.invalid_writes
 echo "invalid" | sudo tee "/sys/class/misc/$DEVICE_NAME/threshold" >/dev/null
+
+# Very fast sampling (1ms) → should not wedge, stats.samples_generated keeps incrementing
+echo "1" | sudo tee "/sys/class/misc/$DEVICE_NAME/sampling" >/dev/null
+
+# Read stats to confirm counters
+echo "Current stats:"
+cat "/sys/class/misc/$DEVICE_NAME/stats"
+
+# --- Restore error checking and cleanup ---
 set -e
 sudo rmmod nxp_simtemp
 echo "[T4 PASS] Error paths demo completado."
 
-echo "[T5] Concurrency demo: leyendo mientras se modifica el threshold..."
+echo "[T5] ============== Concurrency demo: leyendo mientras se modifica el threshold ======"
 sudo insmod "$MODULE_DIR/$MODULE_NAME"
 
 # Mostrar threshold inicial
@@ -100,7 +110,7 @@ sudo rmmod nxp_simtemp
 echo "[T5 PASS] Concurrency demo completado: la CLI leyó mientras el threshold cambió sin bloqueos ni errores."
 
 
-echo "[T6] API contract / struct demo..."
+echo "[T6] =================== API contract / struct demo =================================="
 # Solo demostrativo, verifica parcial reads y endianness
 sudo insmod "$MODULE_DIR/$MODULE_NAME"
 "$CLI_DIR/main" --count 5

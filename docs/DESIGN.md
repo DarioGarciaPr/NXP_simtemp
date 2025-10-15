@@ -28,17 +28,6 @@ flowchart TD
         D --> E2["🖥 **GUI App**<br>python3 gui/app.py<br>- Real-time plot<br>- Alert counter<br>- Mode & threshold control"]
     end
 
-    classDef dts fill:#f8bbd0,stroke:#ad1457,stroke-width:2px;
-    classDef sysfs fill:#e0f7fa,stroke:#00796b,stroke-width:2px;
-    classDef timer fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
-    classDef sample fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px;
-    classDef queue fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px;
-    classDef mode fill:#d1c4e9,stroke:#512da8,stroke-width:2px;
-    classDef stats fill:#c5cae9,stroke:#283593,stroke-width:2px;
-    classDef app fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
-    classDef kernelSpace fill:#eceff1,stroke:#37474f,stroke-width:1px,stroke-dasharray:3;
-    classDef userSpace fill:#f5f5f5,stroke:#616161,stroke-width:1px,stroke-dasharray:3;
-
     class F dts;
     class A sysfs;
     class B timer;

@@ -103,14 +103,14 @@ struct nxp_simtemp_stats {
 ## Flow Diagram
 ```mermaid
 flowchart TD
-    A[User Space] --> B[CLI / GUI]
-    B -->|read()/write()/poll()| C[/dev/nxp_simtemp (miscdevice)]
-    C --> D[Kernel Module]
-    D --> E[Sysfs: threshold, sampling, mode, stats]
-    D --> F[Timer Callback: sample generation]
+    A["User Space"] --> B["CLI / GUI"]
+    B -->|read/write/poll| C["dev/nxp_simtemp - miscdevice"]
+    C --> D["Kernel Module"]
+    D --> E["Sysfs: threshold, sampling, mode, stats"]
+    D --> F["Timer Callback: sample generation"]
     F --> D
-    D -->|update latest_sample, alert_event| G[Wait Queue & Mutex]
-    H[Platform Device / Device Tree] --> D
+    D -->|update latest_sample, alert_event| G["Wait Queue & Mutex"]
+    H["Platform Device / Device Tree"] --> D
 ```
 
 ## References

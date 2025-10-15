@@ -8,39 +8,28 @@
 flowchart TD
     subgraph Kernel_Space["🧩 **Kernel Space**"]
         F["📄 **Device Tree (DTS)**<br>nxp_simtemp.dts<br><i>(Not functional yet)</i>"] 
-            -->|intended hardware mapping| A["🔧 **SysFS Interfaces**<br>/sys/class/misc/nxp_simtemp/<br>threshold<br>sampling_ms<br>mode<br>stats"]
+            -->|intended hardware mapping| A["🔧 **SysFS Configuration**<br>/sys/class/misc/nxp_simtemp/<br>sampling_ms ↔ threshold<br>mode ↔ simulation mode<br>stats ↔ sample stats"]
 
-        A -->|sampling_ms controls timer| B["⏱ **Timer Callback**<br>nxp_simtemp_timer<br>(mod_timer, ms)"]
-        B -->|generates sample| C["🗃 **latest_sample**<br>temp_mC / alert flag"]
+        A -->|control values| B["⏱ **Timer / Callback**<br>nxp_simtemp_timer<br>(mod_timer, sampling_ms)"]
+        B -->|"generates samples"| C["🗃 **latest_sample**<br>temp_mC / alert"]
         C -->|"wake_up_interruptible(sample_wq)"| D["🛎 **Wait Queue (sample_wq)**<br>Notifies readers / poll"]
-
-        subgraph Extra_Features["📊 **Internal State**"]
-            M["⚙️ **mode (SysFS)**<br>normal / noisy / ramp<br>→ Selects temp generator"]
-            S["📈 **stats (SysFS)**<br>samples, invalid_writes, alerts"]
-        end
-
-        B --> M
-        B --> S
     end
 
     subgraph User_Space["💻 **User Space**"]
-        D --> E1["🧰 **CLI App**<br>./nxp_simtemp_cli<br>- Displays temp & alert<br>- Updates threshold & mode<br>- Tests poll events"]
-        D --> E2["🖥 **GUI App**<br>python3 gui/app.py<br>- Real-time plot<br>- Alert counter<br>- Mode & threshold control"]
+        D --> E1["💻 **CLI App**<br>./nxp_simtemp_cli<br>- Shows temp/alert<br>- Updates threshold<br>- Tests events"]
+        D --> E2["🖥 **GUI App**<br>python3 gui/app.py<br>- Displays temp & alerts<br>- Alert counter<br>- Updates threshold<br>"]
     end
 
+    %% Assign classes
     class F dts;
     class A sysfs;
     class B timer;
     class C sample;
     class D queue;
-    class M mode;
-    class S stats;
     class E1,E2 app;
     class Kernel_Space kernelSpace;
     class User_Space userSpace;
-
 ```
-
 
 ## Features
 - Periodic temperature sampling via a kernel timer (`sample_timer`).

@@ -119,6 +119,6 @@ flowchart TD
 - Kernel timer and wait queue mechanisms.
 
 ---
-Design updated to include block diagram, interaction description, locking choices, API trade-offs, Device Tree mapping, and scaling considerations.
+
 
 

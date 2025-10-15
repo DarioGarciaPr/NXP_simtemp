@@ -24,6 +24,13 @@ struct sample {
 static struct sample latest_sample;
 static int threshold = DEFAULT_THRESHOLD;
 static int sampling_ms = DEFAULT_SAMPLING_MS;
+struct nxp_simtemp_stats {
+    u64 samples_generated;
+    u64 invalid_writes;
+    u64 alerts;
+};
+static struct nxp_simtemp_stats stats;
+static DEFINE_MUTEX(stats_lock);
 
 static struct timer_list sample_timer;
 static DECLARE_WAIT_QUEUE_HEAD(sample_wq);
@@ -48,6 +55,13 @@ static ssize_t threshold_store(struct device *dev,
         mutex_unlock(&sample_lock);
         return count;
     }
+    
+    if (kstrtoint(buf, 10, &val) != 0) {
+    mutex_lock(&stats_lock);
+    stats.invalid_writes++;
+    mutex_unlock(&stats_lock);
+    return -EINVAL;
+    }
     return -EINVAL;
 }
 
@@ -71,6 +85,13 @@ static ssize_t nxp_simtemp_write(struct file *file, const char __user *buf,
         mutex_unlock(&sample_lock);
         return count;
     }
+    
+    if (kstrtoint(kbuf, 10, &val) != 0) {
+    mutex_lock(&stats_lock);
+    stats.invalid_writes++;
+    mutex_unlock(&stats_lock);
+    return -EINVAL;
+    }
 
     return -EINVAL;
 }
@@ -93,9 +114,33 @@ static ssize_t sampling_store(struct device *dev,
         mod_timer(&sample_timer, jiffies + msecs_to_jiffies(sampling_ms));
         return count;
     }
+    
+    if (kstrtoint(buf, 10, &val) != 0 || val <= 0) {
+    mutex_lock(&stats_lock);
+    stats.invalid_writes++;
+    mutex_unlock(&stats_lock);
+    return -EINVAL;
+}
+    
     return -EINVAL;
 }
 static DEVICE_ATTR_RW(sampling);
+
+static ssize_t stats_show(struct device *dev,
+                          struct device_attribute *attr, char *buf)
+{
+    ssize_t ret;
+    mutex_lock(&stats_lock);
+    ret = scnprintf(buf, 256,
+                    "samples=%llu invalid_writes=%llu alerts=%llu\n",
+                    stats.samples_generated,
+                    stats.invalid_writes,
+                    stats.alerts);
+    mutex_unlock(&stats_lock);
+    return ret;
+}
+
+static DEVICE_ATTR_RO(stats);
 
 /* --- periodic sample generation --- */
 static void timer_callback(struct timer_list *t)
@@ -106,6 +151,13 @@ static void timer_callback(struct timer_list *t)
     sample_ready = true;
     wake_up_interruptible(&sample_wq);
     mutex_unlock(&sample_lock);
+    
+    mutex_lock(&stats_lock);
+    stats.samples_generated++;
+    if (latest_sample.alert)
+    stats.alerts++;
+    mutex_unlock(&stats_lock);
+
 
     mod_timer(&sample_timer, jiffies + msecs_to_jiffies(sampling_ms));
 }
@@ -176,12 +228,21 @@ static int nxp_simtemp_init_core(void)
     ret = device_create_file(nxp_simtemp_dev.this_device, &dev_attr_sampling);
     if (ret)
         goto err_remove_threshold;
+        
+    ret = device_create_file(nxp_simtemp_dev.this_device, &dev_attr_stats);
+    if (ret)
+        goto err_remove_sampling;
 
     timer_setup(&sample_timer, timer_callback, 0);
     mod_timer(&sample_timer, jiffies + msecs_to_jiffies(sampling_ms));
 
     pr_info("nxp_simtemp loaded\n");
     return 0;
+    
+    err_remove_sampling:
+    device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_sampling);
+    goto err_remove_threshold;
+
 
 err_remove_threshold:
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_threshold);
@@ -195,6 +256,7 @@ static void nxp_simtemp_cleanup(void)
     del_timer_sync(&sample_timer);
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_threshold);
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_sampling);
+    device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_stats);
     misc_deregister(&nxp_simtemp_dev);
 
     pr_info("nxp_simtemp: module unloaded and sysfs cleaned\n");

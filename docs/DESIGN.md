@@ -133,7 +133,7 @@ struct nxp_simtemp_stats {
 The Device Tree (DTS) entry for nxp_simtemp is currently defined but not functional.
 This decision is intentional due to the target environment being Ubuntu x86, where hardware enumeration relies on ACPI instead of the Device Tree mechanism used on ARM-based SoCs.
 
-Because nxp_simtemp is a fully virtual simulation driver with no actual hardware node, instantiating it through DTS would require additional layers such as platform bus emulation or a QEMU target with OF support, adding unnecessary complexity for a userspace test module.
+Because nxp_simtemp is a fully virtual simulation driver with no actual hardware node, instantiating it through DTS would require additional layers such as platform bus emulation or a QEMU target with OF support.
 
 For now, the module is instantiated dynamically via misc_register(), which provides a lightweight and portable interface to expose SysFS attributes (sampling_ms, threshold, mode, stats) and the character device node without platform dependencies.
 

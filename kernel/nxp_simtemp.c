@@ -22,6 +22,17 @@ struct sample {
 };
 
 static struct sample latest_sample;
+// Data Path binary read
+struct sample_record {
+    u32 timestamp_jiffies;
+    int temp_mC;
+    u8 alert;       // 1 si supera threshold
+    u8 reserved[3]; // padding a 12 bytes
+};
+
+// Flag para alertas de threshold crossing
+static bool alert_event = false;
+
 static int threshold = DEFAULT_THRESHOLD;
 static int sampling_ms = DEFAULT_SAMPLING_MS;
 struct nxp_simtemp_stats {
@@ -147,10 +158,13 @@ static void timer_callback(struct timer_list *t)
 {
     mutex_lock(&sample_lock);
     latest_sample.temp_mC = 20000 + (get_random_u32() % 40000); // 20-60 C
-    latest_sample.alert = (latest_sample.temp_mC > threshold) ? 1 : 0;
+    bool new_alert = (latest_sample.temp_mC > threshold);
+    latest_sample.alert = new_alert;
     sample_ready = true;
-    wake_up_interruptible(&sample_wq);
+    if (new_alert)
+      alert_event = true;
     mutex_unlock(&sample_lock);
+    wake_up_interruptible(&sample_wq);
     
     mutex_lock(&stats_lock);
     stats.samples_generated++;
@@ -166,37 +180,49 @@ static void timer_callback(struct timer_list *t)
 static ssize_t nxp_simtemp_read(struct file *file, char __user *buf,
                                 size_t count, loff_t *ppos)
 {
-    char kbuf[128];
-    ssize_t ret = 0;
+    struct sample_record rec;
     struct sample s;
 
+    // waits for a new sample
     if (wait_event_interruptible(sample_wq, sample_ready))
         return -ERESTARTSYS;
 
     mutex_lock(&sample_lock);
+
     s = latest_sample;
+
+    // reset flags for next sample
     sample_ready = false;
+    alert_event = false;
+
     mutex_unlock(&sample_lock);
 
-    ret = scnprintf(kbuf, sizeof(kbuf), "%lu temp=%d.%03dC alert=%d\n",
-                    jiffies,
-                    s.temp_mC / 1000,
-                    s.temp_mC % 1000,
-                    s.alert);
+    // armar struct binario
+    rec.timestamp_jiffies = (u32)jiffies;
+    rec.temp_mC = s.temp_mC;
+    rec.alert = s.alert;
+    memset(rec.reserved, 0, sizeof(rec.reserved));
 
-    if (copy_to_user(buf, kbuf, min(count, (size_t)ret)))
+    // copiar al espacio del usuario
+    if (copy_to_user(buf, &rec, min(count, sizeof(rec))))
         return -EFAULT;
 
-    return ret;
+    return sizeof(rec);
 }
+
 
 static unsigned int nxp_simtemp_poll(struct file *file, poll_table *wait)
 {
     unsigned int mask = 0;
     poll_wait(file, &sample_wq, wait);
+    mutex_lock(&sample_lock);
     if (sample_ready)
-        mask = POLLIN | POLLRDNORM;
-    return mask;
+      mask |= POLLIN | POLLRDNORM;  // nueva muestra disponible
+    if (alert_event)
+      mask |= POLLPRI;              // threshold crossing
+    mutex_unlock(&sample_lock);
+
+  return mask;
 }
 
 static const struct file_operations nxp_simtemp_fops = {
@@ -233,16 +259,25 @@ static int nxp_simtemp_init_core(void)
     if (ret)
         goto err_remove_sampling;
 
+    // --- timer setup ---
     timer_setup(&sample_timer, timer_callback, 0);
     mod_timer(&sample_timer, jiffies + msecs_to_jiffies(sampling_ms));
+    pr_info("nxp_simtemp: timer armado con sampling %d ms\n", sampling_ms);
+
+    // --- inicializar primera muestra para evitar bloqueo en read() ---
+    mutex_lock(&sample_lock);
+    latest_sample.temp_mC = 20000;  // valor inicial arbitrario
+    latest_sample.alert = 0;
+    sample_ready = true;             // permite primera lectura inmediata
+    alert_event = false;             // inicializa flag de threshold
+    mutex_unlock(&sample_lock);
 
     pr_info("nxp_simtemp loaded\n");
     return 0;
     
-    err_remove_sampling:
+err_remove_sampling:
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_sampling);
     goto err_remove_threshold;
-
 
 err_remove_threshold:
     device_remove_file(nxp_simtemp_dev.this_device, &dev_attr_threshold);
@@ -250,6 +285,7 @@ err_remove:
     misc_deregister(&nxp_simtemp_dev);
     return ret;
 }
+
 
 static void nxp_simtemp_cleanup(void)
 {

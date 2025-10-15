@@ -48,26 +48,28 @@ sudo ./scripts/run_demo.sh
 
 ```mermaid
 flowchart TD
-    A["Start: Developer/Tester"] --> B["Run build.sh"]
-    B --> B1["Clean previous builds"]
-    B --> B2["Compile kernel module nxp_simtemp.ko"]
-    B --> B3["Compile CLI main"]
-    B3 --> C["Build complete: nxp_simtemp.ko + CLI main"]
+A["Start: Developer/Tester"] --> B["Run build.sh"]
+B --> B1["Clean previous builds"]
+B --> B2["Compile kernel module nxp_simtemp.ko"]
+B --> B3["Compile CLI main"]
+B3 --> C["Build complete: nxp_simtemp.ko + CLI main"]
 
-    C --> D["Run run_demo.sh"]
-    D --> D1["Check if module loaded; rmmod if needed"]
-    D --> D2["Load nxp_simtemp module"]
-    D --> D3["Configure sysfs: threshold & sampling"]
-    D --> D4["Run CLI tests (T1–T6)"]
-    D4 --> D4a["T1: Load/Unload test"]
-    D4 --> D4b["T2: Sysfs config & read demo"]
-    D4 --> D4c["T3: Threshold test"]
-    D4 --> D4d["T4: Error paths demo"]
-    D4 --> D4e["T5: Concurrency demo"]
-    D4 --> D4f["T6: API/struct demo"]
-    D --> D5["Unload nxp_simtemp module"]
 
-    D5 --> E[Demo/Test complete]
+C --> D["Run run_demo.sh"]
+D --> D1["Check if module loaded; rmmod if needed"]
+D --> D2["Load nxp_simtemp module"]
+D --> D3["Configure sysfs: threshold, sampling, mode"]
+D --> D4["Run CLI tests (T1–T7)"]
+D4 --> D4a["T1: Load/Unload test"]
+D4 --> D4b["T2: Periodic sampling & sysfs demo"]
+D4 --> D4c["T3: Threshold event / poll"]
+D4 --> D4d["T4: Error paths demo"]
+D4 --> D4e["T5: Concurrency demo"]
+D4 --> D4f["T6: API/struct demo"]
+D4 --> D4g["T7: Mode attribute test"]
+D --> D5["Unload nxp_simtemp module"]
+
+D5 --> E["Demo/Test complete"]
 ```
 ---
 ## Running the Python GUI

@@ -8,6 +8,8 @@ os.system('clear')
 
 DEVICE_PATH = "/dev/nxp_simtemp"
 SYSFS_THRESHOLD = f"/sys/class/misc/nxp_simtemp/threshold"
+SYSFS_MODE = f"/sys/class/misc/nxp_simtemp/mode"
+
 
 class SimTempGUI:
     def __init__(self, root):
@@ -45,6 +47,18 @@ class SimTempGUI:
         ttk.Label(frame, textvariable=self.threshold_var, font=("Helvetica", 11)).pack(padx=10, pady=5)
         ttk.Label(frame, textvariable=self.threshold_origin_var, font=("Helvetica", 10, "italic")).pack(padx=10, pady=2)
 
+        # Mode control frame
+        mode_frame = ttk.LabelFrame(root, text="Mode Control")
+        mode_frame.pack(pady=10)
+
+        # Mode variable
+        self.mode_var = tk.StringVar(value="normal")  # default
+
+        # Combobox to select mode
+        mode_combo = ttk.Combobox(mode_frame, textvariable=self.mode_var, state="readonly")
+        mode_combo['values'] = ("normal", "noisy", "ramp")
+        mode_combo.pack(padx=10, pady=5)
+
         # Entry field for low threshold
         self.entry_var = tk.StringVar(value=str(self.low_threshold))
         entry = ttk.Entry(frame, textvariable=self.entry_var, width=10)
@@ -54,6 +68,7 @@ class SimTempGUI:
         ttk.Button(frame, text="Update Low Threshold (GUI)", command=self.update_low_threshold).pack(pady=5)
         ttk.Button(frame, text="Read Low Threshold (SysFS)", command=self.read_threshold_sysfs).pack(pady=5)
         ttk.Button(frame, text="Write Low Threshold (SysFS)", command=self.write_threshold_sysfs).pack(pady=5)
+        ttk.Button(mode_frame, text="Apply Mode (SysFS)", command=self.write_mode_sysfs).pack(pady=5)
 
         # Alert counter
         self.alert_label = ttk.Label(root, textvariable=self.alert_var, font=("Helvetica", 12, "bold"))
@@ -97,6 +112,18 @@ class SimTempGUI:
                 return None
         else:
             return random.uniform(20.0, 50.0)
+
+    def write_mode_sysfs(self):
+        mode = self.mode_var.get()
+        if os.path.exists(SYSFS_MODE):
+            try:
+                with open(SYSFS_MODE, "w") as f:
+                    f.write(mode)
+                self.status_var.set(f"Mode set to {mode} (SysFS)")
+            except Exception:
+                self.status_var.set("Error writing mode")
+        else:
+            self.status_var.set("SysFS mode not available")
 
     # Periodic temperature update
     def update_temperature(self):

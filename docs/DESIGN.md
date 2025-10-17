@@ -11,21 +11,21 @@ flowchart TD
             -->|intended hardware mapping| A["🔧 **SysFS Interfaces**<br>/sys/class/misc/nxp_simtemp/<br>threshold<br>sampling_ms<br>mode<br>stats"]
 
         A -->|sampling_ms controls timer| B["⏱ **Timer Callback**<br>nxp_simtemp_timer<br>(mod_timer, ms)"]
-        B -->|generates sample| C["🗃 **latest_sample**<br>temp_mC / alert flag"]
+        B -->|generates sample| C["🗃 **latest_sample**<br>temp_mC / alert flag<br><i>protected by sample_lock</i>"]
         C -->|"wake_up_interruptible(sample_wq)"| D["🛎 **Wait Queue (sample_wq)**<br>Notifies readers / poll"]
 
         subgraph Extra_Features["📊 **Internal State**"]
-            M["⚙️ **mode (SysFS)**<br>normal / noisy / ramp<br>→ Selects temp generator"]
-            S["📈 **stats (SysFS)**<br>samples, invalid_writes, alerts"]
+            M["⚙️ **mode (SysFS)**<br>normal / noisy / ramp<br>→ Selects temp generator<br><i>protected by mode_lock</i>"]
+            S["📈 **stats (SysFS)**<br>samples, invalid_writes, alerts<br><i>protected by stats_lock</i>"]
         end
 
-        B --> M
+        M -->|read by| B
         B --> S
     end
 
     subgraph User_Space["💻 **User Space**"]
         D --> E1["🧰 **CLI App**<br>./main<br>- Displays temp & alert<br>- Updates threshold & mode<br>- Tests poll events"]
-        D --> E2["🖥 **GUI App**<br>python3 gui/app.py<br>- Real-time plot<br>- Alert counter<br>- Mode & threshold control"]
+        D --> E2["🖥 **GUI App**<br>python3 gui/app.py<br>- Real-time gauge<br>- Alert counter<br>- Mode & threshold control"]
     end
 
     class F dts;

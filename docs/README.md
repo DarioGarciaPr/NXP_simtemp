@@ -96,3 +96,4 @@ python3 ../user/gui/simtemp_gui.py
 ## Links
 
 - 🎥 Demo video: [Ver video](https://drive.google.com/file/d/1ro_3oI7XGq7yIQid55PTp7sFlyi0SjcZ/view?usp=drive_link)
+- 📁 Repositorio Git: [Ver repo](https://github.com/DarioGarciaPr/NXP_simtemp)

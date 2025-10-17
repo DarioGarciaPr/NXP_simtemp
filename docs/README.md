@@ -87,7 +87,7 @@ python3 ../user/gui/simtemp_gui.py
 * Alerts will be counted if temperature falls below the low threshold.
 * Make sure /dev/nxp_simtemp exists; otherwise, the GUI will run in simulation mode.
 
-<img width="275" height="315" alt="gui" src="gui/gui.png" />
+<img width="275" height="315" alt="gui" src="user/gui/gui.png" />
 
 
 > ⚠️ Important: Do not attempt to modify the kernel module through the GUI, only sysfs reads/writes are supported.

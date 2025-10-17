@@ -10,6 +10,7 @@
 
 #define DEVICE "/dev/nxp_simtemp"
 #define SYSFS_THRESHOLD "/sys/class/misc/nxp_simtemp/threshold"
+#define SYSFS_SAMPLING "/sys/class/misc/nxp_simtemp/sampling"
 
 struct sample_record {
     uint32_t timestamp_jiffies;
@@ -23,6 +24,21 @@ int read_threshold() {
     int fd = open(SYSFS_THRESHOLD, O_RDONLY);
     if (fd < 0) {
         perror("Error reading threshold");
+        return -1;
+    }
+    char buf[32];
+    ssize_t n = read(fd, buf, sizeof(buf)-1);
+    close(fd);
+    if (n <= 0) return -1;
+    buf[n] = '\0';
+    return atoi(buf);
+}
+
+// Read sampling from sysfs
+int read_sampling() {
+    int fd = open(SYSFS_SAMPLING, O_RDONLY);
+    if (fd < 0) {
+        perror("Error reading sampling_ms");
         return -1;
     }
     char buf[32];
@@ -51,22 +67,58 @@ int write_threshold(int value) {
     return 0;
 }
 
+// Write sampling time to sysfs
+int write_sampling(int value) {
+    int fd = open(SYSFS_SAMPLING, O_WRONLY | O_SYNC);
+    if (fd < 0) {
+        perror("Error opening sampling_ms");
+        return -1;
+    }
+    char buf[32];
+    int len = snprintf(buf, sizeof(buf), "%d", value);
+    if (write(fd, buf, len) != len) {
+        perror("Error writing sampling_ms");
+        close(fd);
+        return -1;
+    }
+    
+    fsync(fd);
+    close(fd);
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int max_reads = -1; // infinite by default
 
     // Parse arguments
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "set") == 0 && i + 1 < argc) {
-            int t = atoi(argv[i+1]);
-            if (write_threshold(t) == 0)
-                printf("Threshold updated to %d\n", t);
-            return 0;
-        } else if (strcmp(argv[i], "get") == 0) {
-            int t = read_threshold();
-            if (t >= 0)
-                printf("Current threshold: %d\n", t);
-            return 0;
-        } else if (strcmp(argv[i], "--count") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "set") == 0 && i + 2 < argc && strcmp(argv[i+1], "threshold") == 0) {
+        int t = atoi(argv[i+2]);
+        if (write_threshold(t) == 0)
+          printf("Threshold updated to %d\n", t);
+        return 0;
+        }
+        else if (strcmp(argv[i], "set") == 0 && i + 2 < argc && strcmp(argv[i+1], "sampling") == 0) {
+        int s = atoi(argv[i+2]);
+        if (write_sampling(s) == 0)
+            printf("Sampling time updated to %d ms\n", s);
+        return 0;
+      }
+    // --- get threshold ---
+    else if (strcmp(argv[i], "get") == 0 && i + 1 < argc && strcmp(argv[i+1], "threshold") == 0) {
+        int t = read_threshold();
+        if (t >= 0)
+            printf("Current threshold: %d\n", t);
+        return 0;
+      }
+    // --- get sampling ---
+    else if (strcmp(argv[i], "get") == 0 && i + 1 < argc && strcmp(argv[i+1], "sampling") == 0) {
+        int s = read_sampling();
+        if (s >= 0)
+            printf("Current sampling time: %d ms\n", s);
+        return 0;
+      }
+      else if (strcmp(argv[i], "--count") == 0 && i + 1 < argc) {
             max_reads = atoi(argv[i+1]);
             i++;
         }

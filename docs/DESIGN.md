@@ -24,7 +24,7 @@ flowchart TD
     end
 
     subgraph User_Space["💻 **User Space**"]
-        D --> E1["🧰 **CLI App**<br>./nxp_simtemp_cli<br>- Displays temp & alert<br>- Updates threshold & mode<br>- Tests poll events"]
+        D --> E1["🧰 **CLI App**<br>./main<br>- Displays temp & alert<br>- Updates threshold & mode<br>- Tests poll events"]
         D --> E2["🖥 **GUI App**<br>python3 gui/app.py<br>- Real-time plot<br>- Alert counter<br>- Mode & threshold control"]
     end
 
